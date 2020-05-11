@@ -224,10 +224,10 @@ class SmashBot():
     def parse_message(self, command, poster):
         isAdmin = poster == bot_config.get_commissioner_slack_id()
 
-        if command.startswith('me over '):
+        if command.lower().startswith('me over '):
             winner = poster
             loser = self.parse_first_slack_id(command)
-        elif command.startswith('<@') and command.index('over me') > 0:
+        elif command.startswith('<@') and command.lower().find('over me') > 0:
             winner = self.parse_first_slack_id(command)
             loser = poster
         elif isAdmin and command.startswith('<@'):
