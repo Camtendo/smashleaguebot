@@ -10,7 +10,7 @@ const weeklyCommands = {
   seasonStart: "The next season starts June 3rd. By receiving this message, you will be entered automatically. If you don't want to participate, please let <@U04QW49D1> know asap if you haven't already.",
   standingsUpdated: "Standings for season 3 have been updated. Please finish remaining matches before July 12th. You can view them here: https://sync.hudlnet.com/pages/viewpage.action?pageId=135990683",
 
-  mondayReminderMessage: "This week, you play against @against_user. Please message them _today_ to find a time that works. After your match, report the winner and # of sets (best of 3) to <@UGP9FEBLY> in <#C03NHDHBD>.",
+  mondayReminderMessage: "This week, you play against @against_user. Please message them _today_ to find a time that works. After your match, report the winner and # of sets (best of 5) to <@UGP9FEBLY> in <#C03NHDHBD>.",
   thursdayReminderMessage: "Friendly reminder that you have a match against @against_user. Please work with them to find a time to play."
 }
 
