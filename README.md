@@ -23,7 +23,7 @@ pip install paramiko
 ```
 
 
-Download and install node.js
+Download and install node.js. Use node 16 for best compatibility
 
 Install node modules
 ```
