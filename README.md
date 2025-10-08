@@ -20,6 +20,7 @@ pip install slack-bolt
 pip install slackclient
 pip install Flask
 pip install paramiko
+pip install requests
 ```
 
 
