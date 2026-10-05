@@ -59,7 +59,8 @@ def print_season_markup(lctx, season = None):
     weeks.sort()
     output = ''
     ###
-    # ||heading 1||heading 2||heading 3||
+    # |heading 1|heading 2|heading 3|
+    # |---|---|---|
     # |cell A1|cell A2|cell A3|
     # |cell B1|cell B2|cell B3|
     max_group_size = 0
@@ -76,12 +77,13 @@ def print_season_markup(lctx, season = None):
     for standing_group in standing_groups:
         if first_group:
             first_group = False
-            output += 'h2. Standings\n'
+            output += '## Standings\n'
         else:
-            output += 'h2. Standings Cont.\n'
+            output += '## Standings Cont.\n'
         for grouping in standing_group:
-            output += '||Group ' + grouping
-        output += '||\n'
+            output += '|Group ' + grouping
+        output += '|\n'
+        output += '|---' * len(standing_group) + '|\n'
         for i in range(0, max_group_size):
             output += '|'
 
@@ -99,19 +101,20 @@ def print_season_markup(lctx, season = None):
 
     for grouping in groupings:
         group_matches = [m for m in all_matches if m.grouping == grouping]
-        output += '\nh2. Group '+grouping+'\n'
+        output += '\n## Group '+grouping+'\n'
         matches_by_week = {}
         for week in weeks:
-            output += '||'+str(week)
+            output += '|'+str(week)
             matches_by_week[week] = [m for m in group_matches if m.week == week]
-        output += '||\n'
+        output += '|\n'
+        output += '|---' * len(weeks) + '|\n'
 
         for i in range(0, len(matches_by_week[weeks[0]])):
             for week in weeks:
                 if i >= len(matches_by_week[week]):
                     break
                 m = matches_by_week[week][i]
-                output += '|' + get_player_print(all_players, m.player_1_id, m) + '\\\\' + get_player_print(all_players, m.player_2_id, m)
+                output += '|' + get_player_print(all_players, m.player_1_id, m) + '<br>' + get_player_print(all_players, m.player_2_id, m)
             output += '|\n'
 
     return output
