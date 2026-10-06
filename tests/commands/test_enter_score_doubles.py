@@ -78,7 +78,7 @@ class Test(TestCase):
         self.report('me and <@uB> over <@uC> <@uD> 3-1 thanks <@uB>', 'uA')
         self.assertEqual(self.t['AB'], self.match_ab_cd().winner_id)
 
-    def test_d3_hyphenated_label_records(self):
+    def test_hyphenated_label_records(self):
         # labeled mention whose label contains '-' must still record
         self.report('me over <@uC|mary-kate> 3-1', 'uA')
         m = self.match_ab_cd()
