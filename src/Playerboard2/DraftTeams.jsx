@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { Pencil, Trash } from 'react-bootstrap-icons';
 import './DraftTeams.css'
 
-function DraftTeams({ leagueName, onChange }) {
+function DraftTeams({ leagueName, onChange, refreshToken = 0 }) {
     const [teams, setTeams] = useState([])
     const [season, setSeason] = useState(null)
     const [players, setPlayers] = useState([])
@@ -14,6 +14,10 @@ function DraftTeams({ leagueName, onChange }) {
     const [teamName, setTeamName] = useState('')
     const [teamGroup, setTeamGroup] = useState('A')
     const [reload, setReload] = useState(false)
+
+    useEffect(() => {
+      setExtraGroups([])
+    }, [leagueName])
 
     useEffect(() => {
       const fetchData = async () => {
@@ -26,7 +30,7 @@ function DraftTeams({ leagueName, onChange }) {
         setPlayers(all.filter(p => p.active === 1).sort((a, b) => a.name.localeCompare(b.name)))
       }
       fetchData().catch(console.error)
-    }, [leagueName, reload])
+    }, [leagueName, reload, refreshToken])
 
     const groups = [...new Set([...teams.map(t => t.grouping), ...extraGroups])].sort()
     const taken = new Set(teams.flatMap(t => [t.member_1, t.member_2]))
