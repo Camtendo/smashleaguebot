@@ -522,3 +522,12 @@ class Test(TestCase):
         self.assertEqual(u'testplayer3', unaffected.winner_id)
         self.assertEqual(4, unaffected.sets)
         self.assertIsNotNone(unaffected.date_played)
+
+    def test_failed_write_does_not_lock_db(self):
+        db.add_player(league_name, u'testplayer', 'Test Player', 'A')
+        for _ in range(3):
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.add_player(league_name, u'testplayer', 'Dup', 'A')
+        db.set_config(league_name, 'after_failure', 'ok')
+        self.assertEqual('ok', db.get_config(league_name, 'after_failure'))
+        self.assertEqual(['testplayer'], [p.slack_id for p in db.get_players(league_name)])
