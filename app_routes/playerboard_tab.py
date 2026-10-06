@@ -61,7 +61,6 @@ def update_team_grouping_and_orders():
     return _team_action(lambda: db.update_team_grouping_and_orders(data.get('leagueName'), data.get('teamIds'), data.get('grouping')))
 
 
-
 @playerboard_api.route('/get-players-from-season', methods=['GET'])
 def get_players_from_season():
     league_name = request.args.get("leagueName", default="", type=str)

@@ -68,6 +68,19 @@ class Test(TestCase):
         db_updater.run_updates(league_name)
         self.assertEqual('DOUBLES', db.get_config(league_name, configs.LEAGUE_FORMAT))
 
+    def test_migration_idempotent_when_team_table_exists(self):
+        # A crash after CREATE TABLE but before version bump leaves the table.
+        # The next run of run_updates must not raise "table team already exists".
+        write_v6_db()
+        import sqlite3
+        conn = sqlite3.connect(db.path(league_name))
+        conn.execute(db.TEAM_TABLE_DDL)
+        conn.commit()
+        conn.close()
+        from admin import db_updater
+        db_updater.run_updates(league_name)  # must not raise
+        self.assertEqual('7', db.get_config(league_name, configs.LEAGUE_VERSION))
+
     def test_fresh_initialize_is_v7(self):
         test_league_setup.create_test_league()
         self.assertEqual(str(db.LATEST_VERSION), db.get_config(league_name, configs.LEAGUE_VERSION))

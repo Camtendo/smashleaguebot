@@ -561,7 +561,7 @@ class Test(TestCase):
 
     def test_team_name_rules(self):
         self._roster()
-        for bad in ['a|b', '<@u1>', 'line\nbreak', 'x' * 41]:
+        for bad in ['a|b', '<@u1>', 'a>b', 'line\nbreak', 'line\rbreak', 'x' * 41]:
             with self.assertRaises(ValueError) as ctx:
                 db.add_team(league_name, 1, 'u1', 'u2', 'A', name=bad)
             self.assertEqual(db.TEAM_NAME_ERROR, str(ctx.exception))

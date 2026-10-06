@@ -161,7 +161,7 @@ def _update_from_6_to_7(league_name):
 
     conn = db.get_connection(league_name)
     c = conn.cursor()
-    c.execute(db.TEAM_TABLE_DDL)
+    c.execute(db.TEAM_TABLE_DDL.replace('CREATE TABLE', 'CREATE TABLE IF NOT EXISTS', 1))
     conn.commit()
     conn.close()
 
