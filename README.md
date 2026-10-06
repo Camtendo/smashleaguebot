@@ -56,4 +56,4 @@ A league can run as doubles: two Slack users per team, teams re-formed every sea
 
 Players report with the singles syntax and can tag any opponent: `@bot me over @anyOpponent 3-1`. Either partner can report. Match DMs go to both partners; use `@partner_user` in the match message to tag the partner.
 
-Existing leagues: run **Update DB** once after upgrading (schema v7). Singles behavior is unchanged.
+Existing leagues: run **Update League** once after upgrading (schema v7). Singles behavior is unchanged.
