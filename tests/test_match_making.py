@@ -167,10 +167,8 @@ class Test(TestCase):
         third = db.add_team(league_name, 1, 'uP', 'uQ', 'A')
         match_making.create_matches_for_season(league_name, datetime.date(2022, 1, 3), 3, [], False)
         group_a = [m for m in db.get_matches_for_season(league_name, 1) if m.grouping == 'A']
-        # include_byes=False: no bye rows in group A
-        self.assertEqual(0, len([m for m in group_a if m.player_2_id is None]))
-        # every match is between two valid team IDs
-        team_ids = {t['AB'], t['CD'], third}
-        for m in group_a:
-            self.assertIn(m.player_1_id, team_ids)
-            self.assertIn(m.player_2_id, team_ids)
+        self.assertEqual(3, len(group_a))
+        self.assertEqual(
+            {tuple(sorted((t['AB'], t['CD']))), tuple(sorted((t['AB'], third))), tuple(sorted((t['CD'], third)))},
+            {tuple(sorted((m.player_1_id, m.player_2_id))) for m in group_a}
+        )
