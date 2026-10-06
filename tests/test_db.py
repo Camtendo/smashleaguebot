@@ -582,12 +582,12 @@ class Test(TestCase):
             db.update_team(league_name, other, member_1='u1')
 
     def test_update_team_referenced_raises(self):
-        self._roster()
+        self._roster(5)
         t1 = db.add_team(league_name, 1, 'u1', 'u2', 'A')
         t2 = db.add_team(league_name, 1, 'u3', 'u4', 'A')
         db.add_match_by_ids(league_name, t1, t2, datetime.date(2022, 1, 3), 'A', 1, 3)
-        with self.assertRaises(ValueError):
-            db.update_team(league_name, t1, member_2='u3')
+        with self.assertRaisesRegex(ValueError, 'has matches'):
+            db.update_team(league_name, t1, member_2='u5')
         db.update_team(league_name, t1, name='New')
         self.assertEqual('New', db.get_team_by_id(league_name, t1).name)
 
