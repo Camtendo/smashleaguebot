@@ -281,7 +281,7 @@ def analyze_group_possibilities(league_name, group, num_promoted=2):
     group_matches = [m for m in all_matches if m.grouping == group and m.player_1_id is not None and m.player_2_id is not None]
     unplayed_matches = [m for m in group_matches if m.winner_id is None]
 
-    player_ids = list(set([m.player_1_id for m in group_matches] + [m.player_2_id for m in group_matches]))
+    player_ids = sorted(set([m.player_1_id for m in group_matches] + [m.player_2_id for m in group_matches]))
     num_players = len(player_ids)
     promotion_locked = []
     promotion_destiny_controlled = []
