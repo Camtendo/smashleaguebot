@@ -9,6 +9,58 @@ from backend.league_context import LeagueContext
 playerboard_api = Blueprint('playerboard_api', __name__)
 
 
+def _team_json(r, team):
+    return {'team_id': team.team_id, 'name': team.name, 'member_1': team.member_1, 'member_2': team.member_2,
+            'grouping': team.grouping, 'order_idx': team.order_idx, 'display_name': r.display_name(team.team_id)}
+
+
+def _team_action(work):
+    try:
+        result = work() or {}
+        return jsonify(dict({'success': True}, **result))
+    except (ValueError, TypeError, KeyError) as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@playerboard_api.route('/get-draft-teams', methods=['GET'])
+def get_draft_teams():
+    league_name = request.args.get("leagueName", default="", type=str)
+    if not league_name:
+        return jsonify({'success': False, 'message': 'leagueName is required.'})
+    season = db.get_current_season(league_name) + 1
+    r = participants.resolver(league_name)
+    return jsonify({'success': True, 'season': season, 'teams': [_team_json(r, t) for t in db.get_teams_for_season(league_name, season)]})
+
+
+@playerboard_api.route('/add-team', methods=['POST'])
+def add_team():
+    data = request.get_json()
+    league_name = data.get('leagueName')
+    season = db.get_current_season(league_name) + 1
+    return _team_action(lambda: {'teamId': db.add_team(league_name, season, data.get('member1'), data.get('member2'), data.get('grouping'), name=data.get('name'))})
+
+
+@playerboard_api.route('/update-team', methods=['POST'])
+def update_team():
+    data = request.get_json()
+    kwargs = {'member_1': data.get('member1'), 'member_2': data.get('member2')}
+    if 'name' in data:
+        kwargs['name'] = data.get('name')
+    return _team_action(lambda: db.update_team(data.get('leagueName'), data.get('teamId'), **kwargs))
+
+
+@playerboard_api.route('/delete-team', methods=['POST'])
+def delete_team():
+    data = request.get_json()
+    return _team_action(lambda: db.delete_team(data.get('leagueName'), data.get('teamId')))
+
+
+@playerboard_api.route('/update-team-grouping-and-orders', methods=['POST'])
+def update_team_grouping_and_orders():
+    data = request.get_json()
+    return _team_action(lambda: db.update_team_grouping_and_orders(data.get('leagueName'), data.get('teamIds'), data.get('grouping')))
+
+
 
 @playerboard_api.route('/get-players-from-season', methods=['GET'])
 def get_players_from_season():
