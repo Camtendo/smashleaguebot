@@ -70,16 +70,26 @@ class Test(TestCase):
         self.assert_rejected('<@uA> over <@uB> 3-1', 'commish', "<@uA> and <@uB> are on the same team.", channel='Dchannel')
         self.assert_rejected('me over <@uE> 3-1', 'uA', enter_score.NO_MATCH_MSG)
         self.assert_rejected('me over <@uC> 2-0', 'uA', enter_score.get_format_message(self.lctx))
-        # D2: sender tags themselves on both sides
+        # sender tagging themselves on both sides
         self.assert_rejected('me over <@uA> 3-1', 'uA', enter_score.PLAYED_YOURSELF_MSG)
-        # D3: labeled mention with hyphen in label
-        db.clear_score_for_match(league_name, self.match_ab_cd().id)
+
+    def test_trailing_mention_after_score_records(self):
+        # A tag after the score (e.g. partner tagging thanks) must not cause rejection or misparse.
+        self.report('me and <@uB> over <@uC> <@uD> 3-1 thanks <@uB>', 'uA')
+        self.assertEqual(self.t['AB'], self.match_ab_cd().winner_id)
 
     def test_d3_hyphenated_label_records(self):
         # labeled mention whose label contains '-' must still record
         self.report('me over <@uC|mary-kate> 3-1', 'uA')
         m = self.match_ab_cd()
         self.assertEqual(self.t['AB'], m.winner_id)
+
+    def test_group_message_uses_match_grouping(self):
+        # Moving a team to a different group after scheduling must not change which
+        # group update is posted when the match is recorded.
+        db.update_team_grouping_and_orders(league_name, [self.t['AB']], 'Z')
+        post, _ = self.report('me over <@uC> 3-1', 'uA')
+        post.assert_called_with(self.lctx, group.build_message_for_group(self.lctx, 'A'), 'comp_channel')
 
     def test_admin_dm_entry(self):
         with patch.object(slack_util, 'post_message') as post, patch.object(slack_util, 'add_reaction') as react:

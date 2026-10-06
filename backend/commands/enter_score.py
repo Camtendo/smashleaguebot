@@ -51,7 +51,14 @@ def parse_sides(text, sender):
     sides = split_sides(text)
     if sides is None:
         return None
-    winners, losers = side_ids(sides[0], sender), side_ids(sides[1], sender)
+    # Normalize tag labels before cutting so a label containing '-' (e.g. <@U|mary-kate>)
+    # does not trip the score detector. Then cut at the first score to ignore trailing
+    # mentions like "gg @them" or "thanks @partner".
+    right = TAG_RE.sub(lambda m: '<@{}>'.format(m.group(1)), sides[1])
+    score_m = re.search(r'\d+\s*-\s*\d', right)
+    if score_m:
+        right = right[:score_m.start()]
+    winners, losers = side_ids(sides[0], sender), side_ids(right, sender)
     if not winners or not losers:
         return None
     return winners, losers
@@ -103,11 +110,11 @@ def scores_for_match(match, text):
 
 
 def resolve_doubles_sides(resolver, season, sender, winners, losers):
-    # Spec §4.2 order: every user must be on a team before any side/partner checks run.
+    # Every tagged user must be on a team before any side or partner checks run.
     for user in winners + losers:
         if resolver.participant_for_user(user, season) is None:
             return NOT_ON_TEAM_MSG.format(user)
-    # D2: sender appears on both sides (played yourself)
+    # A user on both sides means they played themselves.
     winner_set = set(winners)
     loser_set = set(losers)
     if winner_set & loser_set:
@@ -127,7 +134,7 @@ def resolve_doubles_sides(resolver, season, sender, winners, losers):
     return side_teams[0][0][1], side_teams[1][0][1]
 
 
-def _record_result(lctx, command_object, winner_id, write):
+def _record_result(lctx, command_object, winner_id, write, grouping=None):
     is_admin = command_object.user == lctx.configs[configs.COMMISSIONER_SLACK_ID] and command_object.is_dm()
     try:
         if write() is False:
@@ -142,7 +149,8 @@ def _record_result(lctx, command_object, winner_id, write):
     if not is_admin:
         if lctx.configs[configs.MESSAGE_COMMISSIONER_ON_SUCCESS] == 'TRUE':
             slack_util.post_message(lctx, 'Entered into db', lctx.configs[configs.COMMISSIONER_SLACK_ID])
-        grouping = participants.resolver(lctx.league_name).grouping_of(winner_id)
+        if grouping is None:
+            grouping = participants.resolver(lctx.league_name).grouping_of(winner_id)
         group_msg = group.build_message_for_group(lctx, grouping)
         slack_util.post_message(lctx, group_msg, command_object.channel)
 
@@ -179,7 +187,8 @@ def handle_message(lctx, command_object):
         slack_util.post_message(lctx, get_format_message(lctx), command_object.channel)
         return
     _record_result(lctx, command_object, winner_id,
-                   lambda: db.update_match_by_id(lctx.league_name, winner_id, loser_id, *scores))
+                   lambda: db.update_match_by_id(lctx.league_name, winner_id, loser_id, *scores),
+                   grouping=tmp[0].grouping)
 
 
 def _handle_doubles(lctx, command_object, winners, losers):
@@ -199,7 +208,8 @@ def _handle_doubles(lctx, command_object, winners, losers):
         slack_util.post_message(lctx, get_format_message(lctx), command_object.channel)
         return
     _record_result(lctx, command_object, winner_team,
-                   lambda: db.update_match_by_participants(lctx.league_name, winner_team, loser_team, *scores))
+                   lambda: db.update_match_by_participants(lctx.league_name, winner_team, loser_team, *scores),
+                   grouping=match.grouping)
 
 
 def parse_score(message):
