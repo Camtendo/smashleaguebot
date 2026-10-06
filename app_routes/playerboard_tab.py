@@ -3,38 +3,11 @@ import datetime, json
 from flask import Blueprint, request, jsonify
 
 from admin import admin_config
-from backend import db, match_making, utility, slack_util
+from backend import db, utility, slack_util
 from backend.league_context import LeagueContext
 
 playerboard_api = Blueprint('playerboard_api', __name__)
 
-
-@playerboard_api.route('/submit-players', methods=['POST'])
-def submit_players():
-    players_and_groups = request.get_json().get("players")
-
-    for group, players in players_and_groups.items():
-        print(group, players)
-
-        ensure_players_in_db(players)
-        update_groupings(group, players)
-
-    today = datetime.datetime.today()
-    last_monday = today - datetime.timedelta(days=today.weekday())
-    next_monday = (last_monday + datetime.timedelta(days=7)).date()
-
-    league_name = admin_config.get_current_league()
-    lctx = LeagueContext.load_from_db(league_name)
-    # TODO use the config for sets needed
-    match_making.create_matches_for_season(lctx, next_monday, 3, skip_weeks=[], include_byes=False)
-
-    return "We did it boys"
-
-
-@playerboard_api.route('/get-active-players', methods=['GET'])
-def get_active_players():
-    players = get_ranked_players()
-    return jsonify(players)
 
 
 @playerboard_api.route('/get-players-from-season', methods=['GET'])
@@ -114,48 +87,6 @@ def get_deactivated_players():
     lctx = LeagueContext.load_from_db(league_name)
     return jsonify(slack_util.get_deactivated_slack_ids(lctx))
 
-
-def ensure_players_in_db(players):
-    league_name = admin_config.get_current_league()  # TODO pass league name in
-    existing_players_dict = dict()
-    existing_players = db.get_players(league_name)
-
-    for existing_player in existing_players:
-        existing_players_dict[existing_player.name] = existing_player
-
-    players_to_add = []
-    for player in players:
-        if player['name'] not in existing_players_dict:
-            print("FOUND ONE", player['name'])
-            players_to_add.append(player)
-
-    if len(players_to_add) == 0:
-        return
-
-    # TODO move this to slack util if we're gonna keep it
-    lctx = LeagueContext.load_from_db(league_name)
-    users = slack_util._get_users_list(lctx)
-    user_map = {}
-    for user in users:
-        for player in players_to_add:
-            if user['profile']['real_name'].startswith(player['name']) and not user['deleted']:
-                user_map[player['name']] = user['id']
-                db.add_player(league_name, user['id'], player['name'], player['group'])
-
-
-def update_groupings(group, players):
-    league_name = admin_config.get_current_league()
-    existing = db.get_players(league_name)
-
-    for player in players:
-        for e in existing:
-            if e.name == player['name']:
-                if group == 'Trash':
-                    db.update_grouping(league_name, e.slack_id, "")
-                    db.set_active(league_name, e.slack_id, False)
-                else:
-                    db.update_grouping(league_name, e.slack_id, group)
-                    db.set_active(league_name, e.slack_id, True)
 
 
 def get_ranked_players(league_name=None, season=None):

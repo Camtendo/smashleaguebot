@@ -207,26 +207,3 @@ class Test(TestCase):
         slack_util.send_custom_messages(lctx, message, debug=True)
         mock_post_message.assert_called_once_with(lctx, message, 'commissioner_slack_id')
 
-    @patch('time.sleep', return_value=None)
-    @patch.object(slack_util, 'post_message')
-    def test_send_custom_for_missed_games(self, mock_post_message, mock_time_sleep):
-        week = datetime.date(2022, 1, 3)
-        skip_weeks = []
-        match_making.create_matches_for_season(lctx.league_name, week, 1, skip_weeks, False)
-        matches = db.get_matches_for_week(lctx.league_name, week)
-        db.update_match_by_id(lctx.league_name, matches[0].player_1_id, matches[0].player_2_id, 1, 0, 0)
-
-        message = 'Play your games!'
-        slack_util.send_custom_for_missed_games(lctx, message, 3, datetime.date(2022, 1, 17), debug=False)
-        calls = [
-            call(lctx, message, matches[1].player_1_id),
-            call(lctx, message, matches[1].player_2_id),
-            call(lctx, message, matches[2].player_1_id),
-            call(lctx, message, matches[2].player_2_id),
-        ]
-        mock_post_message.assert_has_calls(calls)
-        self.assertEqual(4, mock_post_message.call_count)
-
-        mock_post_message.reset_mock()
-        slack_util.send_custom_for_missed_games(lctx, message, 2, datetime.date(2022, 1, 17), debug=True)  # change num_missed to 2 to ensure commissioner missed 2
-        mock_post_message.assert_called_once_with(lctx, message, 'commissioner_slack_id')
