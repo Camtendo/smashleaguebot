@@ -4,7 +4,20 @@ import datetime
 from functools import partial
 from backend import configs
 
-LATEST_VERSION = 6
+LATEST_VERSION = 7
+
+DEFAULT_MATCH_MESSAGE = 'This week, you play against @against_user. Please message them _today_ to find a time that works. After your match, report the winner and # of sets (best of 5) to @bot_name in #competition_channel.'
+
+TEAM_TABLE_DDL = ('CREATE TABLE team ('
+                  'team_id TEXT PRIMARY KEY, '
+                  'season INT NOT NULL, '
+                  'name TEXT, '
+                  'member_1 TEXT NOT NULL, '
+                  'member_2 TEXT NOT NULL, '
+                  'grouping TEXT, '
+                  'order_idx INT DEFAULT 0, '
+                  'FOREIGN KEY (member_1) REFERENCES player, '
+                  'FOREIGN KEY (member_2) REFERENCES player)')
 
 
 def path(league_name):
@@ -56,6 +69,7 @@ def initialize(league_name):
               'date DATE, '
               'sent INT, '
               'season INT DEFAULT 0)')
+    c.execute(TEAM_TABLE_DDL)
 
     conn.commit()
     conn.close()
@@ -67,8 +81,9 @@ def initialize_configs(league_name):
     set_config(league_name, configs.BOT_NAME, '@bot')
     set_config(league_name, configs.LOG_PATH, 'log.txt')
     set_config(league_name, configs.SCORE_EXAMPLE, '3-2')
-    set_config(league_name, configs.MATCH_MESSAGE, 'This week, you play against @against_user. Please message them _today_ to find a time that works. After your match, report the winner and # of sets (best of 5) to @bot_name in #competition_channel.')
+    set_config(league_name, configs.MATCH_MESSAGE, DEFAULT_MATCH_MESSAGE)
     set_config(league_name, configs.REMINDER_MESSAGE, 'Friendly reminder that you have a match against @against_user. Please work with them to find a time to play.')
+    set_config(league_name, configs.LEAGUE_FORMAT, 'SINGLES')
 
 
 _tmp_commands_to_run = {}
