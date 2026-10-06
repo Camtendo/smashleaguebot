@@ -1,3 +1,5 @@
+import re
+
 from backend import slack_util, configs, db
 from backend.commands import group
 
@@ -7,20 +9,64 @@ NO_MATCH_MSG = "I couldn't find a match between you two."
 WORKED_REACTION = "white_check_mark"
 NOT_WORKED_REACTION = "x"
 
+TAG_RE = re.compile(r'<@([^>|\s]+)(?:\|[^>]*)?>')
+
+
+def split_sides(text):
+    idx = text.lower().find(' over ')
+    if idx == -1:
+        return None
+    return text[:idx], text[idx + len(' over '):]
+
+
+def _tokens(side_text):
+    spaced = TAG_RE.sub(lambda m: ' <@{}> '.format(m.group(1)), side_text)
+    return [t for t in re.split(r'[\s,&]+', spaced) if t]
+
+
+def mentions_me(side_text):
+    return any(token.lower() == 'me' for token in _tokens(side_text))
+
+
+def side_ids(side_text, sender):
+    ids = []
+    for token in _tokens(side_text):
+        tag = TAG_RE.fullmatch(token)
+        if tag:
+            uid = tag.group(1)
+        elif token.lower() == 'me':
+            uid = sender
+        else:
+            continue
+        if uid not in ids:
+            ids.append(uid)
+    return ids
+
+
+def parse_sides(text, sender):
+    sides = split_sides(text)
+    if sides is None:
+        return None
+    winners, losers = side_ids(sides[0], sender), side_ids(sides[1], sender)
+    if not winners or not losers:
+        return None
+    return winners, losers
+
 
 def handles_message(lctx, command_object):
     is_admin = command_object.user == lctx.configs[configs.COMMISSIONER_SLACK_ID] and command_object.is_dm()
     if not is_admin and command_object.channel != lctx.configs[configs.COMPETITION_CHANNEL_SLACK_ID]:
         return False
-    if command_object.text.upper().startswith('ME OVER <@') and not is_admin:
-        return True
-    if command_object.text.startswith('<@'):
-        text = command_object.text[command_object.text.index('>')+1:].upper()
-        if text.startswith(' OVER ME') and not is_admin:
-            return True
-        if text.startswith(' OVER <@') and command_object.is_dm() and command_object.user == lctx.configs[configs.COMMISSIONER_SLACK_ID]:
-            return True
-    return False
+    text = command_object.text
+    if not (re.match(r'(?i)me\b', text) or text.startswith('<@')):
+        return False
+    sides = split_sides(text)
+    if sides is None or parse_sides(text, command_object.user) is None:
+        return False
+    left_me, right_me = mentions_me(sides[0]), mentions_me(sides[1])
+    if is_admin:
+        return not left_me and not right_me
+    return left_me != right_me
 
 
 def get_format_message(lctx):
@@ -34,10 +80,12 @@ def handle_message(lctx, command_object):
         slack_util.post_message(lctx, BLOCK_NEW_SCORES_MSG, command_object.channel)
         return
 
-    users = parse_users(lctx, command_object)
-    if users is None:
+    sides = parse_sides(command_object.text, command_object.user)
+    if sides is None or len(sides[0]) != 1 or len(sides[1]) != 1:
         slack_util.post_message(lctx, get_format_message(lctx), command_object.channel)
         return
+    users = {'winner_id': sides[0][0], 'loser_id': sides[1][0]}
+
     if users['winner_id'] == users['loser_id']:
         slack_util.post_message(lctx, PLAYED_YOURSELF_MSG, command_object.channel)
         return
@@ -93,37 +141,6 @@ def handle_message(lctx, command_object):
         player = db.get_player_by_id(lctx.league_name, users['winner_id'])
         group_msg = group.build_message_for_group(lctx, player.grouping)
         slack_util.post_message(lctx, group_msg, command_object.channel)
-
-
-def parse_first_slack_id(message):
-    return message[message.index('<@') + 2: message.index('>')]
-
-
-def parse_second_slack_id(message):
-    message = message[message.index('>') + 1:]
-    return parse_first_slack_id(message)
-
-
-def parse_users(lctx, command_object):
-    is_admin = command_object.user == lctx.configs[configs.COMMISSIONER_SLACK_ID] and command_object.is_dm()
-    command = command_object.text
-    if command.upper().startswith('ME OVER '):
-        winner = command_object.user
-        loser = parse_first_slack_id(command)
-    elif is_admin and command.startswith('<@'):
-        winner = parse_first_slack_id(command)
-        loser = parse_second_slack_id(command)
-    elif command.startswith('<@') and command.upper().index('OVER ME') > 0:
-        winner = parse_first_slack_id(command)
-        loser = command_object.user
-    else:
-        # self.logger.debug('Bad message format') TODO
-        return None
-
-    return {
-        'winner_id': winner,
-        'loser_id': loser
-    }
 
 
 def parse_score(message):
