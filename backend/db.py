@@ -254,13 +254,159 @@ def set_active(league_name, slack_id, active):
         "UPDATE player SET active=? WHERE slack_id = ?", (active_int, slack_id)))
 
 
-def add_match(league_name, player_1, player_2, week_date, grouping, season, sets_needed, play_all_sets=0):
+TEAM_NAME_ERROR = "Team names can't contain | < > or line breaks, and must be 40 characters or fewer."
+TEAM_COLUMNS = 'team_id, season, name, member_1, member_2, grouping, order_idx'
+
+
+class Team:
+    def __init__(self, team_id, season, name, member_1, member_2, grouping, order_idx):
+        self.team_id = team_id
+        self.season = season
+        self.name = name
+        self.member_1 = member_1
+        self.member_2 = member_2
+        self.grouping = grouping
+        self.order_idx = order_idx
+
+    @property
+    def members(self):
+        return [self.member_1, self.member_2]
+
+    @classmethod
+    def from_db(cls, row):
+        return Team(*row)
+
+
+def _clean_team_name(name):
+    if name is None or not name.strip():
+        return None
+    name = name.strip()
+    if len(name) > 40 or any(ch in name for ch in '|<>\n\r'):
+        raise ValueError(TEAM_NAME_ERROR)
+    return name
+
+
+def _query_teams(league_name, where='', params=()):
+    conn = get_connection(league_name)
+    try:
+        rows = conn.cursor().execute('SELECT {} FROM team {} ORDER BY season, grouping, order_idx, team_id'.format(TEAM_COLUMNS, where), params).fetchall()
+    finally:
+        conn.close()
+    return [Team.from_db(r) for r in rows]
+
+
+def get_all_teams(league_name):
+    return _query_teams(league_name)
+
+
+def get_teams_for_season(league_name, season):
+    return _query_teams(league_name, 'WHERE season = ?', (season,))
+
+
+def get_team_by_id(league_name, team_id):
+    teams = _query_teams(league_name, 'WHERE team_id = ?', (team_id,))
+    return teams[0] if teams else None
+
+
+def get_team_for_user(league_name, slack_id, season):
+    teams = _query_teams(league_name, 'WHERE season = ? AND (member_1 = ? OR member_2 = ?)', (season, slack_id, slack_id))
+    return teams[0] if teams else None
+
+
+def _validate_members(league_name, season, member_1, member_2, ignore_team_id=None):
+    if member_1 == member_2:
+        raise ValueError('A team needs two different players.')
+    names = {p.slack_id: p.name for p in get_players(league_name)}
+    for m in (member_1, member_2):
+        if m not in names:
+            raise ValueError('{} is not a player in this league.'.format(m))
+    for team in get_teams_for_season(league_name, season):
+        if team.team_id == ignore_team_id:
+            continue
+        for m in (member_1, member_2):
+            if m in team.members:
+                raise ValueError('{} is already on a team for season {}.'.format(names[m], season))
+
+
+def add_team(league_name, season, member_1, member_2, grouping, name=None):
+    name = _clean_team_name(name)
+    _validate_members(league_name, season, member_1, member_2)
+    existing = get_teams_for_season(league_name, season)
+    n = 1 + max([int(t.team_id.split('-')[1]) for t in existing] + [0])
+    team_id = 'T{}-{}'.format(season, n)
+    order_idx = len([t for t in existing if t.grouping == grouping])
+    _execute_write(league_name, lambda c: c.execute(
+        'INSERT INTO team (team_id, season, name, member_1, member_2, grouping, order_idx) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (team_id, season, name, member_1, member_2, grouping, order_idx)))
+    return team_id
+
+
+_UNSET = object()
+
+
+def update_team(league_name, team_id, name=_UNSET, member_1=None, member_2=None):
+    team = get_team_by_id(league_name, team_id)
+    if team is None:
+        raise ValueError('No team {}.'.format(team_id))
+    new_name = team.name if name is _UNSET else _clean_team_name(name)
+    new_1 = member_1 or team.member_1
+    new_2 = member_2 or team.member_2
+    members_changing = new_1 != team.member_1 or new_2 != team.member_2
+    if members_changing and _team_has_matches(league_name, team_id):
+        raise ValueError('Team {} has matches; members cannot be changed.'.format(team_id))
+    _validate_members(league_name, team.season, new_1, new_2, ignore_team_id=team_id)
+    _execute_write(league_name, lambda c: c.execute(
+        'UPDATE team SET name=?, member_1=?, member_2=? WHERE team_id=?', (new_name, new_1, new_2, team_id)))
+
+
+def _team_has_matches(league_name, team_id):
+    conn = get_connection(league_name)
+    try:
+        return conn.cursor().execute(
+            'SELECT 1 FROM match WHERE player_1 = ? OR player_2 = ? OR winner = ? LIMIT 1',
+            (team_id, team_id, team_id)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def delete_team(league_name, team_id):
+    if _team_has_matches(league_name, team_id):
+        raise ValueError('Team {} has matches and cannot be deleted.'.format(team_id))
+    _execute_write(league_name, lambda c: c.execute('DELETE FROM team WHERE team_id = ?', (team_id,)))
+
+
+def update_team_grouping_and_orders(league_name, team_ids, grouping):
     def work(c):
-        if player_1 is None or player_2 is None:
-            p_id = player_1.slack_id if player_1 is not None else player_2.slack_id
+        for idx, team_id in enumerate(team_ids):
+            c.execute('UPDATE team SET grouping=?, order_idx=? WHERE team_id=?', (grouping, idx, team_id))
+    _execute_write(league_name, work)
+
+
+def has_matches(league_name):
+    conn = get_connection(league_name)
+    try:
+        return conn.cursor().execute('SELECT 1 FROM match LIMIT 1').fetchone() is not None
+    finally:
+        conn.close()
+
+
+def add_match(league_name, player_1, player_2, week_date, grouping, season, sets_needed, play_all_sets=0):
+    add_match_by_ids(league_name,
+                     player_1.slack_id if player_1 is not None else None,
+                     player_2.slack_id if player_2 is not None else None,
+                     week_date, grouping, season, sets_needed, play_all_sets)
+
+
+def add_match_by_ids(league_name, p1_id, p2_id, week_date, grouping, season, sets_needed, play_all_sets=0):
+    if p1_id is None and p2_id is None:
+        raise ValueError('A match needs at least one participant.')
+
+    def work(c):
+        if p1_id is None or p2_id is None:
+            p_id = p1_id if p1_id is not None else p2_id
             c.execute("INSERT INTO match (player_1, week, grouping, season, sets, sets_needed, play_all_sets, player_1_score, player_2_score, tie_score) VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, 0)", (p_id, str(week_date), grouping, season, sets_needed, play_all_sets))
         else:
-            c.execute("INSERT INTO match (player_1, player_2, week, grouping, season, sets, sets_needed, play_all_sets, player_1_score, player_2_score, tie_score) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0, 0, 0)", (player_1.slack_id, player_2.slack_id, str(week_date), grouping, season, sets_needed, play_all_sets))
+            c.execute("INSERT INTO match (player_1, player_2, week, grouping, season, sets, sets_needed, play_all_sets, player_1_score, player_2_score, tie_score) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0, 0, 0)", (p1_id, p2_id, str(week_date), grouping, season, sets_needed, play_all_sets))
     _execute_write(league_name, work)
 
 
@@ -323,18 +469,22 @@ def get_matches_for_week(league_name, week):
 
 
 def get_match_by_players(league_name, player_a, player_b):
-    if player_a.slack_id == player_b.slack_id:
+    return get_match_by_participants(league_name, player_a.slack_id, player_b.slack_id)
+
+
+def get_match_by_participants(league_name, a_id, b_id):
+    if a_id == b_id:
         return None
     season = get_current_season(league_name)
     conn = get_connection(league_name)
-    c = conn.cursor()
-    c.execute("SELECT rowid, * FROM match WHERE season = ? and (player_1 = ? or player_2 = ?) and (player_1 = ? or player_2 = ?)",
-              (season, player_a.slack_id, player_a.slack_id, player_b.slack_id, player_b.slack_id))
-    row = c.fetchone()
-    conn.close()
-
+    try:
+        row = conn.cursor().execute(
+            "SELECT rowid, * FROM match WHERE season = ? and (player_1 = ? or player_2 = ?) and (player_1 = ? or player_2 = ?)",
+            (season, a_id, a_id, b_id, b_id)).fetchone()
+    finally:
+        conn.close()
     if row is None or len(row) == 0:
-        print("No match for players:", player_a.name, player_b.name)
+        print("No match for participants:", a_id, b_id)
         return None
     return Match.from_db(row)
 
@@ -367,29 +517,32 @@ def _update_match(league_name, winner, loser, winner_score, loser_score, tie_sco
     if winner is None or loser is None:
         print('Could not update match')
         return False
+    return update_match_by_participants(league_name, winner.slack_id, loser.slack_id, winner_score, loser_score, tie_score)
 
-    match = get_match_by_players(league_name, winner, loser)
+
+def update_match_by_participants(league_name, winner_id, loser_id, winner_score, loser_score, tie_score):
+    match = get_match_by_participants(league_name, winner_id, loser_id)
     if match is None:
         print('Could not update match')
         return False
 
-    sets = winner_score+loser_score+tie_score
+    sets = winner_score + loser_score + tie_score
 
     if match.play_all_sets:
         if sets != match.sets_needed:
-            print('Sets out of range, was {}, but must be be'.format(sets, match.sets_needed))
+            print('Sets out of range, was {}, but must be {}'.format(sets, match.sets_needed))
             return False
     else:
-        if sets < match.sets_needed or sets > (match.sets_needed*2-1):
-            print('Sets out of range, was {}, but must be between {} and {}'.format(sets, match.sets_needed, match.sets_needed*2-1))
+        if sets < match.sets_needed or sets > (match.sets_needed * 2 - 1):
+            print('Sets out of range, was {}, but must be between {} and {}'.format(sets, match.sets_needed, match.sets_needed * 2 - 1))
             return False
 
-    p1_score = winner_score if winner.slack_id == match.player_1_id else loser_score
-    p2_score = winner_score if winner.slack_id == match.player_2_id else loser_score
+    p1_score = winner_score if winner_id == match.player_1_id else loser_score
+    p2_score = winner_score if winner_id == match.player_2_id else loser_score
 
     _execute_write(league_name, lambda c: c.execute(
         "UPDATE match SET winner=?, player_1_score=?, player_2_score=?, tie_score=?, sets=?, date_played=? WHERE player_1 = ? and player_2 = ? and season=?",
-        (winner.slack_id, p1_score, p2_score, tie_score, sets, str(datetime.date.today()), match.player_1_id, match.player_2_id, match.season)))
+        (winner_id, p1_score, p2_score, tie_score, sets, str(datetime.date.today()), match.player_1_id, match.player_2_id, match.season)))
     return True
 
 
