@@ -3,7 +3,7 @@ import datetime, json
 from flask import Blueprint, request, jsonify
 
 from admin import admin_config
-from backend import db, utility, slack_util
+from backend import db, utility, slack_util, participants
 from backend.league_context import LeagueContext
 
 playerboard_api = Blueprint('playerboard_api', __name__)
@@ -94,7 +94,7 @@ def get_ranked_players(league_name=None, season=None):
     if season is None:
         season = db.get_current_season(league_name)
     all_matches = db.get_matches_for_season(league_name, season)
-    all_players = db.get_players(league_name)
+    names = participants.resolver(league_name).names_map()
 
     groups = sorted(list(set([m.grouping for m in all_matches])))
     return_players = []
@@ -108,9 +108,10 @@ def get_ranked_players(league_name=None, season=None):
             if player['player_id'] is None:
                 continue
 
-            name = [p.name for p in all_players if p.slack_id is not None and p.slack_id == player['player_id']][0]
+            name = names.get(player['player_id'], player['player_id'])
             return_players.append(
                 {
+                    'id': player['player_id'],
                     'name': name,
                     'slack_id': player['player_id'],
                     'sets_won': player['s_w'],
